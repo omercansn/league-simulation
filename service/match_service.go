@@ -5,6 +5,7 @@ import (
     "league-simulation/repository"
 	"league-simulation/utils"
     "math/rand"
+	"sort"
 )
 
 
@@ -141,6 +142,79 @@ func SimulateWeek(week int) []entities.Match{
 		}
 	}
 	return thisWeekPlayed
+}
+
+
+func GetLeagueTable() []entities.Team {
+
+    teams := repository.GetAllTeams()
+	matches := repository.GetAllMatches()
+	// sorting starts here regarding the priorities, we used this function because i decided it is the most effective and effortless way
+    sort.Slice(teams, func(i, j int) bool {
+		// priority 1: points
+        if teams[i].Points != teams[j].Points {
+            return teams[i].Points > teams[j].Points
+        }
+        // proirity 2: goal difference
+        if teams[i].GoalDifference != teams[j].GoalDifference {
+            return teams[i].GoalDifference > teams[j].GoalDifference
+        }
+        // proirity 3: goals succedded
+        if teams[i].GoalsFor != teams[j].GoalsFor {
+            return teams[i].GoalsFor > teams[j].GoalsFor
+        }
+        // priority 4: head-to-head GF
+		head2head := headToHead(teams[i], teams[j], matches)
+		if head2head != 0 {
+			return head2head > 0
+		}
+		// priority 5: alphabetic order
+        return teams[i].Name < teams[j].Name
+    })
+    return teams
+}
+
+func headToHead(a, b entities.Team, matches []entities.Match) int {
+    pointsA, pointsB := 0, 0
+    goalDiffA, goalDiffB := 0, 0
+
+    for _, m := range matches {
+        // only consider matches between team a and team b
+        if (m.HomeTeamID == a.ID && m.AwayTeamID == b.ID) || (m.HomeTeamID == b.ID && m.AwayTeamID == a.ID) {
+            var ga, gb int // ga: goals scored by a, gb: goals scored by b
+
+            // determine which team is home/away in the match
+            if m.HomeTeamID == a.ID {
+                ga, gb = m.HomeGoals, m.AwayGoals
+            } else {
+                ga, gb = m.AwayGoals, m.HomeGoals
+            }
+
+            // points calculation for head-to-head
+            if ga > gb {
+                pointsA += 3
+            } else if gb > ga {
+                pointsB += 3
+            } else {
+                pointsA++
+                pointsB++
+            }
+
+            // goal difference calculation for head-to-head
+            goalDiffA += ga - gb
+            goalDiffB += gb - ga
+        }
+    }
+
+    // first, compare head-to-head points
+    if pointsA != pointsB {
+        return pointsA - pointsB
+    }
+    // then, compare head-to-head goal difference
+    if goalDiffA != goalDiffB {
+        return goalDiffA - goalDiffB
+    }
+    return 0
 }
 
 
