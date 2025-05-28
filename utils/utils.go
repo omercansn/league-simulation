@@ -6,7 +6,6 @@ import (
 	"time"
 )
 
-
 // a helper function for shuffling teams so that every match order will be changed
 func ShuffleTeams(teams []entities.Team) []entities.Team {
 	// a unique seed for shuffling
@@ -16,3 +15,5 @@ func ShuffleTeams(teams []entities.Team) []entities.Team {
     rand.Shuffle(len(shuffled), func(i, j int) { shuffled[i], shuffled[j] = shuffled[j], shuffled[i] })
     return shuffled
 }
+
+

@@ -12,9 +12,7 @@ func main() {
     r.GET("/league-table", controller.GetLeagueTableHandler)
     r.POST("/simulate-week/:week", controller.SimulateWeekHandler)
     r.POST("/create-fixture", controller.CreateFixtureHandler)
-
-    // Eğer başka endpointler ekleyeceksen burada devam edebilirsin.
-
-    r.Run(":8080") // Sunucu 8080 portundan başlar
+    r.GET("/champion-probabilities", controller.GetChampionProbabilitiesHandler)
+    r.Run(":8080")
 }
 
