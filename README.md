@@ -14,8 +14,8 @@ including fixture generation, week-by-week simulation, league table, and champio
 - [API Endpoints](#api-endpoints)
 - [Example API Requests](#example-api-requests)
 - [Testing](#testing)
-- [Contributing](#contributing)
-- [License](#license)
+- [Notes](#notes)
+
 
 ---
 
