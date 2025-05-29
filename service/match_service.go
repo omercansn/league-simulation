@@ -1,16 +1,18 @@
 package service
 
 import (
+	"fmt"
 	"league-simulation/entities"
 	"league-simulation/repository"
 	"league-simulation/utils"
+	"time"
 
 	"math/rand"
 	"sort"
 )
 
-var teamRepo repository.TeamRepository = &repository.DBTeamRepository{}
-var matchRepo repository.MatchRepository = &repository.DBMatchRepository{}
+// var teamRepo repository.TeamRepository = &repository.DBTeamRepository{}
+// var matchRepo repository.MatchRepository = &repository.DBMatchRepository{}
 
 // there is a basic algorithm according to teams' strengths
 func SimulateGoals(strength int) int {
@@ -31,7 +33,7 @@ func SimulateMatch(match *entities.Match, homeTeam *entities.Team, awayTeam *ent
 
 
 // as in real life, the statistics are updated here
-func UpdateLeagueStatistics(match *entities.Match, homeTeam, awayTeam *entities.Team){
+func UpdateLeagueStatistics(match *entities.Match, homeTeam, awayTeam *entities.Team, teamRepo repository.TeamRepository){
 
 	// if the teams and the match are not found, return
 	if homeTeam == nil || awayTeam == nil || match == nil {
@@ -66,6 +68,9 @@ func UpdateLeagueStatistics(match *entities.Match, homeTeam, awayTeam *entities.
 		homeTeam.Points += 1
 		awayTeam.Points += 1
 	}
+
+    teamRepo.UpdateTeam(homeTeam)
+    teamRepo.UpdateTeam(awayTeam)
 }
 
 
@@ -130,13 +135,13 @@ func SimulateWeek(week int, teamRepo repository.TeamRepository, matchRepo reposi
 	for i := range matches {
 		match := &matches[i]
 		if(match.Week == week && !match.Played){
-			// we finf the teams by id for really running the functions
+			// we find the teams by id for really running the functions
 			home := teamRepo.FindTeamByID(match.HomeTeamID)
 			away := teamRepo.FindTeamByID(match.AwayTeamID)
 
 			// here we go...
 			SimulateMatch(match, home, away)
-			UpdateLeagueStatistics(match, home, away)
+			UpdateLeagueStatistics(match, home, away, teamRepo)
 			
 			// let's save it to our repository
 			matchRepo.UpdateMatch(match)
@@ -146,6 +151,11 @@ func SimulateWeek(week int, teamRepo repository.TeamRepository, matchRepo reposi
 	return thisWeekPlayed
 }
 
+func GetFullFixture(matchRepo repository.MatchRepository) []entities.Match {
+    // retrieve all matches from the repository
+    matches := matchRepo.GetAllMatches()
+    return matches
+}
 
 func GetLeagueTable(teamRepo repository.TeamRepository, matchRepo repository.MatchRepository) []entities.Team {
 
@@ -166,7 +176,7 @@ func GetLeagueTable(teamRepo repository.TeamRepository, matchRepo repository.Mat
             return teams[i].GoalsFor > teams[j].GoalsFor
         }
         // priority 4: head-to-head GF
-		head2head := headToHead(teams[i], teams[j], matches)
+		head2head := HeadToHead(teams[i], teams[j], matches)
 		if head2head != 0 {
 			return head2head > 0
 		}
@@ -176,7 +186,7 @@ func GetLeagueTable(teamRepo repository.TeamRepository, matchRepo repository.Mat
     return teams
 }
 
-func headToHead(a, b entities.Team, matches []entities.Match) int {
+func HeadToHead(a, b entities.Team, matches []entities.Match) int {
     pointsA, pointsB := 0, 0
     goalDiffA, goalDiffB := 0, 0
 
@@ -240,6 +250,7 @@ func GetTotalWeeks(matchRepo repository.MatchRepository) int {
     }
     return maxWeek
 }
+
 // this function calculates the probabilities of being a champion for each team
 func ChampionProbabilities(currentWeek, totalWeeks int, teamRepo repository.TeamRepository, matchRepo repository.MatchRepository) map[string]float64 {
     const simCount = 1000
@@ -247,20 +258,55 @@ func ChampionProbabilities(currentWeek, totalWeeks int, teamRepo repository.Team
     // get all teams and matches from the repository
     teams := teamRepo.GetAllTeams()
     matches := matchRepo.GetAllMatches()
-    remainingWeeks := totalWeeks - currentWeek
+    N := len(teams)
     result := make(map[string]float64)
 
-    // if the leader has more points than the maximum points remaining, the champion is already known
+    // check if the league is just starting (no matches played, all teams have equal points)
+    allZero := true
+    for _, t := range teams {
+        if t.Points != 0 {
+            allZero = false
+            break
+        }
+    }
+
+    // CASE 1: league not started yet (all points are zero)
+    if allZero || currentWeek == 0 {
+        // everyone has equal chance
+        equalProb := 1.0 / float64(N)
+        for _, t := range teams {
+            result[t.Name] = equalProb
+        }
+        return result
+    }
+
+    // CASE 2: league is finished
+    if currentWeek >= totalWeeks {
+        sort.Slice(teams, func(i, j int) bool { return teams[i].Points > teams[j].Points })
+        leader := teams[0]
+        for _, t := range teams {
+            if t.ID == leader.ID {
+                result[t.Name] = 1.0
+            } else {
+                result[t.Name] = 0.0
+            }
+        }
+        return result
+    }
+
+    // CASE 3: league is ongoing, simulate remaining weeks (Monte Carlo)
+    remainingWeeks := totalWeeks - currentWeek
     sort.Slice(teams, func(i, j int) bool { return teams[i].Points > teams[j].Points })
     leader, runnerUp := teams[0], teams[1]
     maxLeft := remainingWeeks * 3
     if leader.Points-runnerUp.Points > maxLeft {
+        // champion is already known
         result[leader.Name] = 1.0
         for _, t := range teams[1:] { result[t.Name] = 0.0 }
         return result
     }
 
-    // here comes the Monte Carlo simulation part
+    // Monte Carlo simulation part: simulate the remaining weeks multiple times
     champCounts := make(map[int]int)
     for sim := 0; sim < simCount; sim++ {
         // create in-memory repositories for teams and matches, so the real data won't change
@@ -275,12 +321,84 @@ func ChampionProbabilities(currentWeek, totalWeeks int, teamRepo repository.Team
         sort.Slice(simTeams, func(i, j int) bool { return simTeams[i].Points > simTeams[j].Points })
         champCounts[simTeams[0].ID]++
     }
-    // now, convert the champion counts to probability percentages
+
+    // now, convert the champion counts to probability percentages,
+    // and weight the probabilities by the current point difference
     for _, t := range teams {
-        result[t.Name] = float64(champCounts[t.ID]) / float64(simCount)
+        baseProb := float64(champCounts[t.ID]) / float64(simCount)
+        pointDiff := t.Points - runnerUp.Points
+        weight := 1.0
+        if t.ID == leader.ID && pointDiff > 0 {
+            // for each point difference, give a 5% bonus, capped at 100%
+            weight += float64(pointDiff) * 0.05
+            if weight > 1.0 {
+                weight = 1.0
+            }
+        }
+        result[t.Name] = baseProb * weight
     }
+    // if the total probability exceeds 1, normalize it
+    var sum float64
+    for _, v := range result {
+        sum += v
+    }
+    if sum > 1.0 {
+        for k := range result {
+            result[k] = result[k] / sum
+        }
+    }
+
     return result
 }
+
+
+// SaveChampionProbabilities saves champion probabilities to the database
+func SaveChampionProbabilities(season int, probs map[string]float64, teamRepo repository.TeamRepository, cpRepo repository.ChampionProbabilityRepository) error {
+    teams := teamRepo.GetAllTeams()
+    for _, t := range teams {
+        prob := entities.ChampionProbability{
+            TeamID:      t.ID,
+            Season:      season,
+            Probability: probs[t.Name],
+            CalculatedAt: time.Now(),
+        }
+        err := cpRepo.SaveChampionProbability(prob)
+        if err != nil {
+            return err
+        }
+    }
+    return nil
+}
+
+func ResetChampionProbabilities(season int, cpRepo repository.ChampionProbabilityRepository) error {
+    return cpRepo.ResetChampionProbabilities(season)
+}
+
+func ResetTeamsIfSeasonFinished(teamRepo repository.TeamRepository, matchRepo repository.MatchRepository, cpRepo repository.ChampionProbabilityRepository) error {
+    totalWeeks := GetTotalWeeks(matchRepo)
+    playedWeeks := GetCurrentWeek(matchRepo)
+    if playedWeeks < totalWeeks {
+        return fmt.Errorf("season is not finished yet")
+    }
+    teams := teamRepo.GetAllTeams()
+    for i := range teams {
+        team := &teams[i]
+        team.MatchesPlayed = 0
+        team.MatchesWon = 0
+        team.MatchesDrawn = 0
+        team.MatchesLost = 0
+        team.GoalsFor = 0
+        team.GoalsAgainst = 0
+        team.GoalDifference = 0
+        team.Points = 0
+        err := teamRepo.UpdateTeam(team);
+        if err != nil {
+            return err
+        }
+    }
+    return nil
+}
+
 
 
 
