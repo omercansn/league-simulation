@@ -7,4 +7,5 @@ type TeamRepository interface {
 	FindTeamByID(id int) *entities.Team
 	FindTeamByName(name string) *entities.Team
 	AddTeam(team entities.Team) error
+	UpdateTeam(team *entities.Team) error
 }

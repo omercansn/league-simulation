@@ -1,5 +1,7 @@
 package repository
 
+// this is used for championship prediction in order not to affect the real data.
+// this repository copies the real data and is used in championship prediction service function.
 import (
 	"fmt"
 	"league-simulation/entities"

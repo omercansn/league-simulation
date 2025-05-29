@@ -1,5 +1,8 @@
 package repository
 
+// this is used for championship prediction in order not to affect the real data.
+// this repository copies the real data and is used in championship prediction service function.
+
 import (
 	"fmt"
 	"league-simulation/entities"
@@ -49,4 +52,14 @@ func (m *MemoryTeamRepo) AddTeam(team entities.Team) error {
 	}
 	m.teams = append(m.teams, team)
 	return nil
+}
+// updates the scores andthe other variables
+func (m *MemoryTeamRepo) UpdateTeam(team *entities.Team) error {
+	for i := range m.teams {
+		if m.teams[i].ID == team.ID {
+			m.teams[i] = *team
+			return nil
+		}
+	}
+	return fmt.Errorf("team not found")
 }
