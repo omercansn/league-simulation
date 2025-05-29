@@ -329,8 +329,8 @@ func ChampionProbabilities(currentWeek, totalWeeks int, teamRepo repository.Team
         pointDiff := t.Points - runnerUp.Points
         weight := 1.0
         if t.ID == leader.ID && pointDiff > 0 {
-            // for each point difference, give a 5% bonus, capped at 100%
-            weight += float64(pointDiff) * 0.05
+            // for each point difference, give a 2% bonus, capped at 100%
+            weight += float64(pointDiff) * 0.02
             if weight > 1.0 {
                 weight = 1.0
             }
